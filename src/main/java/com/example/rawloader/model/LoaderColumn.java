@@ -7,8 +7,10 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ValidationError {
-    private Integer row;
-    private String field;
-    private String message;
+public class LoaderColumn {
+    private String header;
+    private String key;
+    private String type;
+    private boolean required;
+    private String format;
 }

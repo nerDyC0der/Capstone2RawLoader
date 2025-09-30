@@ -9,10 +9,10 @@ import com.example.rawloader.model.RawLoaderMetadata;
 import com.example.rawloader.model.ValidationError;
 import com.example.rawloader.repository.RawLoaderMetadataRepository;
 import com.example.rawloader.service.api.FileStorageService;
-import com.example.rawloader.service.api.RawLoaderService;
-import com.example.rawloader.service.api.TransformService;
 import com.example.rawloader.service.api.ValidatorService;
+import com.example.rawloader.service.api.RawLoaderService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -22,69 +22,97 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class RawLoaderServiceImpl implements RawLoaderService {
 
-    private final PartnerClient partnerClient;
-    private final ConfigClient configClient;
+    private final PartnerClient partnerClient;                 // uses dev stub in 'dev' profile
+    private final ConfigClient configClient;                   // uses dev stub in 'dev' profile
     private final ValidatorService validatorService;
     private final FileStorageService fileStorageService;
     private final RawLoaderMetadataRepository metadataRepository;
-    private final TransformService transformService;
+    private final TransformServiceImpl transformService;       // if you integrated transform step
 
     @Override
     public UploadResponseDTO handleUpload(MultipartFile file, Long partnerId, String configId) {
         try {
-            // 1) fetch partner
+            log.info("Upload start partnerId={}, configId={}, file={}", partnerId, configId, file.getOriginalFilename());
+
+            // 1) Fetch partner + config (stubbed in 'dev')
             PartnerDTO partner = partnerClient.getPartner(partnerId);
-            if (partner == null) {
-                return new UploadResponseDTO(null, false, List.of(new ValidationError(null, "partnerId", "Partner not found")), "Partner not found");
-            }
-
-            // 2) fetch config
             LoaderConfigDTO config = configClient.getConfig(partnerId, configId);
-            if (config == null) {
-                return new UploadResponseDTO(null, false, List.of(new ValidationError(null, "configId", "Config not found")), "Config not found");
+
+            // 2) Validate
+            List<ValidationError> errors;
+            try (InputStream vin = file.getInputStream()) {
+                errors = validatorService.validate(vin, config);
             }
 
-            // 3) validate Excel
-            try (InputStream is = file.getInputStream()) {
-                List<ValidationError> errors = validatorService.validate(is, config);
-                // store file in GridFS regardless to keep audit trail
-                try (InputStream is2 = file.getInputStream()) {
-                    String gridFsId = fileStorageService.store(file.getOriginalFilename(), file.getContentType(), is2);
+            // 3) Prepare metadata (we will fill gridFsId after store if valid)
+            RawLoaderMetadata md = new RawLoaderMetadata();
+            md.setFileName(file.getOriginalFilename());
+            md.setPartnerId(partnerId);
+            md.setConfigId(configId);
+            md.setUploadDate(Instant.now());
 
-                    RawLoaderMetadata metadata = new RawLoaderMetadata();
-                    metadata.setFileName(file.getOriginalFilename());
-                    metadata.setPartnerId(partnerId);
-                    metadata.setConfigId(configId);
-                    metadata.setUploadDate(Instant.now());
-                    metadata.setGridFsId(gridFsId);
-                    metadata.setValidationStatus(errors.isEmpty() ? "VALIDATED" : "FAILED");
-                    metadata.setErrorMessages(errors);
-                    metadata.setRowCount(null); // optional, could compute in validator
+            if (!errors.isEmpty()) {
+                // 4a) Validation FAILED
+                md.setValidationStatus("FAILED");
+                md.setErrorMessages(errors);
+                metadataRepository.save(md);
 
-                    RawLoaderMetadata saved = metadataRepository.save(metadata);
-
-                    if (!errors.isEmpty()) {
-                        return new UploadResponseDTO(saved.getId(), false, errors, "Validation failed");
-                    }
-
-                    // Valid: optionally prepare a transformed preview (not persisting here)
-                    try (InputStream is3 = file.getInputStream()) {
-                        List<String> preview = transformService.transformPreview(is3, config);
-                        // We do not persist transformed data here in this flow (commit later)
-                    }
-                    return new UploadResponseDTO(saved.getId(), true, List.of(), "Uploaded and validated");
-                }
+                return new UploadResponseDTO(
+                        md.getId(),
+                        false,
+                        errors,
+                        "Validation failed",
+                        md.getFileName(),
+                        md.getValidationStatus()
+                );
             }
+
+            // 4b) Validation PASSED → store file in GridFS
+            String gridFsId;
+            try (InputStream sin = file.getInputStream()) {
+                gridFsId = fileStorageService.store(
+                        file.getOriginalFilename(),
+                        file.getContentType(),
+                        sin
+                );
+            }
+            md.setGridFsId(gridFsId);
+            md.setValidationStatus("VALIDATED");
+            metadataRepository.save(md);
+
+            // 5) (Optional) Transform rows and save
+            // try (InputStream tin = file.getInputStream()) {
+            //     transformService.transformAndSave(tin, md.getId(), config);
+            // }
+
+            return new UploadResponseDTO(
+                    md.getId(),
+                    true,
+                    List.of(),
+                    "File validated and stored successfully",
+                    md.getFileName(),
+                    md.getValidationStatus()
+            );
 
         } catch (Exception e) {
-            return new UploadResponseDTO(null, false, List.of(new ValidationError(null, "internal", e.getMessage())), "Internal error: " + e.getMessage());
+            log.error("Upload failed", e);
+            // Return a safe error payload
+            return new UploadResponseDTO(
+                    null,
+                    false,
+                    List.of(new ValidationError(null, "internal", e.getMessage() == null ? "Internal error" : e.getMessage())),
+                    "Internal error",
+                    file != null ? file.getOriginalFilename() : null,
+                    "FAILED"
+            );
         }
     }
 
     @Override
     public RawLoaderMetadata getMetadata(String id) {
-        return metadataRepository.findById(id).orElseThrow(() -> new RuntimeException("Metadata not found: " + id));
+        return metadataRepository.findById(id).orElse(null);
     }
 }

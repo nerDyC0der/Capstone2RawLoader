@@ -13,7 +13,4 @@ public class PartnerDTO {
 
     public void setStatus(String active) {
     }
-
-    public void setName(String testPartner) {
-    }
 }
