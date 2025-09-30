@@ -1,0 +1,11 @@
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/rawloaderdb
+
+# Point Feign clients to local stub endpoints (our DevStubController)
+services:
+  partner:
+    url: http://localhost:8080/devstub
+  config:
+    url: http://localhost:8080/devstub

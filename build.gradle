@@ -1,0 +1,77 @@
+/*
+  Raw Loader Service - build.gradle (Groovy DSL)
+  - Java 21
+  - Spring Boot 3.3.4
+  - Spring Cloud BOM (for OpenFeign)
+  - Includes: Spring Web, Validation, Spring Data MongoDB, OpenFeign,
+              Apache POI, JSLT, Lombok, testing with JUnit & embedded Mongo
+*/
+
+plugins {
+	id 'org.springframework.boot' version '3.3.4'
+	id 'io.spring.dependency-management' version '1.1.6'
+	id 'java'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+ext {
+	// Spring Cloud BOM for Feign / Spring Cloud integration
+	set('springCloudVersion', "2023.0.5")
+}
+
+dependencyManagement {
+	imports {
+		mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+	}
+}
+
+dependencies {
+	// Spring Boot starters
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
+
+	// OpenFeign (version managed by Spring Cloud BOM)
+	implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
+
+	// Apache POI (Excel parsing)
+	implementation 'org.apache.poi:poi-ooxml:5.2.5'
+	implementation 'org.apache.poi:poi:5.2.5'
+
+	// JSLT (transformation engine for previews)
+	implementation 'com.schibsted.spt.data:jslt:0.1.11'
+
+	// Lombok (compileOnly + annotationProcessor)
+	compileOnly 'org.projectlombok:lombok:1.18.34'
+	annotationProcessor 'org.projectlombok:lombok:1.18.34'
+	testCompileOnly 'org.projectlombok:lombok:1.18.34'
+	testAnnotationProcessor 'org.projectlombok:lombok:1.18.34'
+
+	// Testing
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'de.flapdoodle.embed:de.flapdoodle.embed.mongo:4.12.2'
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.encoding = 'UTF-8'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+bootJar {
+	launchScript()
+}

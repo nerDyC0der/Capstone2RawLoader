@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: raw-loader-service
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 25MB
+
+server:
+  port: 8080
+
+# External microservice URLs (real ones for production)
+services:
+  partner:
+    url: http://localhost:8081
+  config:
+    url: http://localhost:8082
