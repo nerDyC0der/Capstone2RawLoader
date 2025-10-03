@@ -1,13 +1,20 @@
 package com.example.rawloader.service.api;
 
-import com.example.rawloader.model.LoaderConfigDTO;
-
-import java.io.InputStream;
 import java.util.List;
+import java.util.Map;
 
 public interface TransformService {
+
     /**
-     * Transform rows using config; return list of transformed JSON strings (preview).
+     * Transform a validated file referenced by metadataId,
+     * applying mapping from loader config, and insert JSON rows into DB.
+     * @return count of inserted rows
      */
-    List<String> transformPreview(InputStream excelInputStream, LoaderConfigDTO config);
+    int transform(String metadataId);
+
+    /**
+     * Preview transformed data (no DB write).
+     * Returns first N transformed rows.
+     */
+    List<Map<String, Object>> preview(String metadataId, int limit);
 }
